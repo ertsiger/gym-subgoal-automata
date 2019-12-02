@@ -1,0 +1,6 @@
+from gym_subgoal_automata.envs.officeworld.officeworld_env import OfficeWorldDeliverCoffeeEnv
+from gym_subgoal_automata.envs.officeworld.officeworld_env import OfficeWorldDeliverCoffeeAndMailEnv
+from gym_subgoal_automata.envs.officeworld.officeworld_env import OfficeWorldPatrolABCEnv
+from gym_subgoal_automata.envs.officeworld.officeworld_env import OfficeWorldPatrolABCStrictEnv
+from gym_subgoal_automata.envs.officeworld.officeworld_env import OfficeWorldPatrolABCDEnv
+from gym_subgoal_automata.envs.officeworld.officeworld_env import OfficeWorldPatrolABCDStrictEnv
