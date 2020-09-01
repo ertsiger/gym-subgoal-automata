@@ -7,8 +7,28 @@ register(
 )
 
 register(
+    id='OfficeWorldDeliverMail-v0',
+    entry_point='gym_subgoal_automata.envs.officeworld:OfficeWorldDeliverMailEnv',
+)
+
+register(
     id='OfficeWorldDeliverCoffeeAndMail-v0',
     entry_point='gym_subgoal_automata.envs.officeworld:OfficeWorldDeliverCoffeeAndMailEnv',
+)
+
+register(
+    id='OfficeWorldDeliverCoffeeOrMail-v0',
+    entry_point='gym_subgoal_automata.envs.officeworld:OfficeWorldDeliverCoffeeOrMailEnv',
+)
+
+register(
+    id='OfficeWorldPatrolAB-v0',
+    entry_point='gym_subgoal_automata.envs.officeworld:OfficeWorldPatrolABEnv',
+)
+
+register(
+    id='OfficeWorldPatrolABStrict-v0',
+    entry_point='gym_subgoal_automata.envs.officeworld:OfficeWorldPatrolABStrictEnv',
 )
 
 register(
@@ -78,6 +98,11 @@ register(
 )
 
 register(
+    id='WaterWorldRedGreenStrict-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenStrictEnv'
+)
+
+register(
     id='WaterWorldRedGreenBlueStrict-v0',
     entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenBlueStrictEnv'
 )
@@ -105,4 +130,85 @@ register(
 register(
     id='WaterWorldRedGreenBlueCyan-v0',
     entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenBlueCyanEnv'
+)
+
+register(
+    id='WaterWorldRedGreenJoint-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenJointEnv'
+)
+
+register(
+    id='WaterWorldRedAndGreenAndBlue-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedAndGreenAndBlueEnv'
+)
+
+register(
+    id='WaterWorldRedGreenBlueCyanYellow-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenBlueCyanYellowEnv'
+)
+
+register(
+    id='WaterWorldRedGreenAvoidMagenta-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenAvoidMagentaEnv'
+)
+
+register(
+    id='WaterWorldRedGreenAvoidMagentaYellow-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedGreenAvoidMagentaYellowEnv'
+)
+
+register(
+    id='WaterWorldRedAvoidMagenta-v0',
+    entry_point='gym_subgoal_automata.envs.waterworld:WaterWorldRedAvoidMagentaEnv'
+)
+
+# CraftWorld
+register(
+    id='CraftWorldMakePlank-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakePlankEnv',
+)
+
+register(
+    id='CraftWorldMakeStick-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeStickEnv',
+)
+
+register(
+    id='CraftWorldMakeCloth-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeClothEnv',
+)
+
+register(
+    id='CraftWorldMakeRope-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeRopeEnv',
+)
+
+register(
+    id='CraftWorldMakeBridge-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeBridgeEnv',
+)
+
+register(
+    id='CraftWorldMakeBed-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeBedEnv',
+)
+
+register(
+    id='CraftWorldMakeAxe-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeAxeEnv',
+)
+
+register(
+    id='CraftWorldMakeShears-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldMakeShearsEnv',
+)
+
+register(
+    id='CraftWorldGetGold-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldGetGoldEnv',
+)
+
+register(
+    id='CraftWorldGetGem-v0',
+    entry_point='gym_subgoal_automata.envs.craftworld:CraftWorldGetGemEnv',
 )

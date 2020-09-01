@@ -36,4 +36,4 @@ in this repository is heavily based on theirs.
 
 ## <a name="references"></a>References
 * Toro Icarte, R.; Klassen, T. Q.; Valenzano, R. A.; and McIlraith, S. A. 2018. [_Using Reward Machines for High-Level Task Specification and Decomposition in Reinforcement Learning_](http://proceedings.mlr.press/v80/icarte18a.html). Proceedings of the 35th International Conference on Machine Learning.
-* Furelos-Blanco, D.; Law, M.; Russo, A.; Broda, K.; and Jonsson, A. 2020. [_Induction of Subgoal Automata for Reinforcement Learning_](https://arxiv.org/abs/1911.13152). Proceedings of the 34th AAAI Conference on Artificial Intelligence.
+* Furelos-Blanco, D.; Law, M.; Russo, A.; Broda, K.; and Jonsson, A. 2020. [_Induction of Subgoal Automata for Reinforcement Learning_](https://aaai.org/ojs/index.php/AAAI/article/view/5802). Proceedings of the 34th AAAI Conference on Artificial Intelligence.

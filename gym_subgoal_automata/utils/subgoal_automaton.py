@@ -1,5 +1,11 @@
 import os
 import subprocess
+from gym_subgoal_automata.utils.condition import EdgeCondition
+
+
+class MultipleConditionsHoldException(Exception):
+    def __init__(self):
+        super().__init__("Error: Multiple conditions cannot hold at the same time.")
 
 
 class SubgoalAutomaton:
@@ -11,24 +17,28 @@ class SubgoalAutomaton:
     GRAPHVIZ_SUBPROCESS_TXT = "diagram.txt"  # name of the file temporally used to store the DFA in Graphviz format
 
     def __init__(self):
-        self.states = set()
+        self.states = []
         self.edges = {}
         self.initial_state = None
         self.accept_state = None
         self.reject_state = None
-        self.min_distance_matrix = None
+        self.distance_matrix = None
 
     def add_state(self, state):
         """Adds a state to the set of states and creates an entry in the set of edges that go from that state."""
         if state not in self.states:
-            self.states.add(state)
+            self.states.append(state)
+            self.states.sort()
             self.edges[state] = []
 
-        self.min_distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
+        self.distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
 
     def get_states(self):
         """Returns the set of states."""
         return self.states
+
+    def get_state_id(self, state):
+        return self.states.index(state)
 
     def get_num_states(self):
         """Returns the number of states in the automaton."""
@@ -43,9 +53,11 @@ class SubgoalAutomaton:
             self.add_state(from_state)
         if to_state not in self.edges:
             self.add_state(to_state)
-        self.edges[from_state].append((conditions, to_state))
 
-        self.min_distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
+        condition = EdgeCondition(tuple(sorted(conditions)))  # keep all conditions sorted
+        self.edges[from_state].append((condition, to_state))
+
+        self.distance_matrix = None  # reset min distance matrix (we don't want to return incorrect results!)
 
     def set_initial_state(self, state):
         """Sets the initial state (there can only be one initial state)."""
@@ -147,7 +159,7 @@ class SubgoalAutomaton:
             for cond, to_state in self.edges[from_state]:
                 if to_state not in collapsed_and_edges[from_state]:
                     collapsed_and_edges[from_state][to_state] = []
-                collapsed_and_edges[from_state][to_state].append("&".join(cond))
+                collapsed_and_edges[from_state][to_state].append(str(cond))
 
         # collapse OR conditions
         collapsed_edges = []
@@ -198,63 +210,47 @@ class SubgoalAutomaton:
         # render the resulting Graphviz graph
         dot.render(filename)
 
-    def get_next_states(self, current_state, observations):
+    def get_next_state(self, current_state, observations):
         """
-        Returns a set of possible next states given the current state and the current observations. If no condition
+        Returns the next state given the current state and the current observations. If no condition
         to a next state holds, then the next state will be the current state.
-
-        Note that we learn deterministic finite automata with reference to a set of examples. Thus, the resulting
-        automaton will be deterministic for that set of examples, but might not be for next examples. This is the
-        reason why we return a set of states instead of a single state. The class using the DFA class will have to
-        check for the number of next states in order to enforce a deterministic automaton in the following learning
-        steps.
         """
-        next_states = set([])
+        candidate_states = set()
+        for condition, candidate_state in self.edges[current_state]:
+            if condition.is_satisfied(observations):
+                candidate_states.add(candidate_state)
 
-        for condition, cand_state in self.edges[current_state]:
-            if self._is_condition_satisfied(condition, observations):
-                next_states.add(cand_state)
+        if len(candidate_states) > 1:
+            raise MultipleConditionsHoldException
+        elif len(candidate_states) == 1:
+            return candidate_states.pop()
+        return current_state
 
-        if len(next_states) == 0:  # if no condition held, the next state is the current state
-            next_states.add(current_state)
+    def get_distance(self, from_state, to_state, method):
+        if self.distance_matrix is None:
+            self._compute_distance_matrix(method)
+        return self.distance_matrix[from_state][to_state]
 
-        return next_states
-
-    def _is_condition_satisfied(self, condition, observations):
-        """Returns true if a condition is satisfied by a set of observations. If a condition is empty, it is always
-        true regardless of the observations."""
-        if len(condition) == 0:  # empty conditions = unconditional transition (always taken)
-            return True
-
-        # check if some condition in the array does not hold (conditions are AND)
-        for literal in condition:
-            if literal.startswith("~"):
-                fluent = literal[1:]  # take literal without the tilde
-                if fluent in observations:
-                    return False
-            else:
-                fluent = literal
-                if fluent not in observations:
-                    return False
-        return True
-
-    def get_distance(self, from_state, to_state):
-        if self.min_distance_matrix is None:
-            self._compute_min_distance_matrix()
-        return self.min_distance_matrix[from_state][to_state]
-
-    def get_distance_to_accept_state(self, from_state):
+    def get_distance_to_accept_state(self, from_state, method="min_distance"):
         if self.has_accept_state():
-            return self.get_distance(from_state, self.accept_state)
+            return self.get_distance(from_state, self.accept_state, method)
         else:
             raise RuntimeError("Error: The automaton does not have an accepting state!")
 
-    def _compute_min_distance_matrix(self):
+    def _compute_distance_matrix(self, method):
         """Computes the minimum distance from every node to every node in the DFA. When a node cannot be reached, the
         distance is float('inf')."""
-        self.min_distance_matrix = {}
+        self.distance_matrix = {}
+
+        if method == "min_distance":
+            method_function = self._compute_min_distances_from_state
+        elif method == "max_distance":
+            method_function = self._compute_max_distances_from_state
+        else:
+            raise RuntimeError("Error: Unknown method '%s' for computing the distance matrix in the automaton." % method)
+
         for state in self.get_states():
-            self.min_distance_matrix[state] = self._compute_min_distances_from_state(state)
+            self.distance_matrix[state] = method_function(state)
 
     def _compute_min_distances_from_state(self, state):
         """Computes the minimum distance from one state to all the other states."""
@@ -275,20 +271,99 @@ class SubgoalAutomaton:
 
         return distances
 
-# Usage example
-# if __name__ == "__main__":
-#     dfa = SubgoalAutomaton()
-#     dfa.add_state("u0")
-#     dfa.add_state("u1")
-#     dfa.add_state("u2")
-#     dfa.add_edge("u0", "u1", ["a", "b"])
-#     dfa.add_edge("u0", "u1", ["c"])
-#     dfa.add_edge("u2", "u1", ["~d"])
-#     dfa.add_edge("u1", "u2", ["e", "f"])
-#     dfa.plot(".", "output.png")
-#
-#     print(dfa.get_next_states("u0", ["c"]))
-#     print(dfa.get_next_states("u0", ["b", "a"]))
-#     print(dfa.get_next_states("u2", ["d"]))
-#     print(dfa.get_distance("u1", "u0"))
+    def _compute_max_distances_from_state(self, state):
+        """Computes the maximum distance from one state to all the other states. IMPORTANT: this is limited to acyclic
+        graphs!"""
+        distances = {s: float("-inf") for s in self.get_states()}
+        distances[state] = 0
+        top_order = self._get_topological_order()
+        for state in top_order:
+            for _, next_state in self.edges[state]:
+                if distances[next_state] < distances[state] + 1:
+                    distances[next_state] = distances[state] + 1
+        for s in distances:
+            if distances[s] == float('-inf'):
+                distances[s] = float('inf')
+        return distances
 
+    def _get_topological_order(self):
+        stack = [self.initial_state]
+        indegrees = self._get_in_degrees()
+        top_order = []
+
+        while len(stack) > 0:
+            state = stack.pop()
+            top_order.append(state)
+            for _, next_state in self.edges[state]:
+                indegrees[next_state] -= 1
+                if indegrees[next_state] == 0:
+                    stack.append(next_state)
+
+        return top_order
+
+    def _get_in_degrees(self):
+        degrees = {s : 0 for s in self.states}
+        for state in self.states:
+            checked_states = set()
+            for _, next_state in self.edges[state]:
+                if next_state not in checked_states:
+                    degrees[next_state] += 1
+                    checked_states.add(next_state)
+        return degrees
+
+    def get_all_conditions(self):
+        """Returns all conditions contained in the automaton without repetitions."""
+        all_conditions = set()
+        for state in self.get_states():
+            for condition, _ in self.edges[state]:
+                all_conditions.add(condition)
+        return sorted(list(all_conditions))
+
+    def get_num_unique_conditions(self):
+        return len(self.get_all_conditions())
+
+    def get_num_outgoing_edges(self, state):
+        """Returns the number of outgoing edges that a given state has."""
+        return len(self.edges[state])
+
+    def get_outgoing_conditions(self, state):
+        return [self.get_condition(state, edge_id) for edge_id in range(self.get_num_outgoing_edges(state))]
+
+    def get_outgoing_condition_id(self, state, condition):
+        return self.get_outgoing_conditions(state).index(condition)
+
+    def get_condition(self, state, edge_id):
+        """Returns the condition for an edge of a given state."""
+        return self.edges[state][edge_id][0]
+
+
+# Usage example
+if __name__ == "__main__":
+    dfa = SubgoalAutomaton()
+    dfa.add_state("u0")
+    dfa.add_state("u1")
+    dfa.add_state("uA")
+    dfa.add_state("uR")
+    dfa.set_initial_state("u0")
+    dfa.set_accept_state("uA")
+    dfa.set_reject_state("uR")
+
+    dfa.add_edge("u0", "u1", ["f", "~g"])
+    dfa.add_edge("u0", "uA", ["f", "g"])
+    dfa.add_edge("u0", "uR", ["n", "~f", "~g"])
+    dfa.add_edge("u1", "uA", ["g"])
+    dfa.add_edge("u1", "uR", ["n", "~g"])
+
+    # dfa.plot(".", "output.png")
+
+    print("(u0, [f]) -->", dfa.get_next_state("u0", ["f"]))
+    print("(u0, [a]) -->", dfa.get_next_state("u0", ["a"]))
+    print("(u0, [g,f]) -->", dfa.get_next_state("u0", ["g", "f"]))
+    print("(u0, [n]) -->", dfa.get_next_state("u0", ["n"]))
+    print("(u1, [g,a,b]) -->", dfa.get_next_state("u1", ["g", "a", "b"]))
+    print("(u1, [n]) -->", dfa.get_next_state("u1", ["n"]))
+
+    print("min_dist(u0, uA) =", dfa.get_distance("u0", "uA", "min_distance"))
+    # print("max_dist(u0, uA) =", dfa.get_distance("u0", "uA", "max_distance"))
+
+    print("Conditions:", dfa.get_all_conditions())

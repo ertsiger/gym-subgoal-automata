@@ -2,13 +2,13 @@ import collections
 import itertools
 import math
 import time
-import gym
-from gym import spaces
 import numpy as np
 import random
 import pygame
+from gym import spaces
 from gym_subgoal_automata.utils import utils
 from gym_subgoal_automata.utils.subgoal_automaton import SubgoalAutomaton
+from gym_subgoal_automata.envs.base.base_env import BaseEnv
 
 
 class WaterWorldActions:
@@ -78,7 +78,7 @@ class BallAgent(Ball):
 BallSequence = collections.namedtuple("BallSequence", field_names=["sequence", "is_strict"])
 
 
-class WaterWorldEnv(gym.Env):
+class WaterWorldEnv(BaseEnv):
     """
     The Water World environment
     from "Using Reward Machines for High-Level Task Specification and Decomposition in Reinforcement Learning"
@@ -119,10 +119,16 @@ class WaterWorldEnv(gym.Env):
                         WaterWorldObservations.CYAN: (0, 255, 255),
                         WaterWorldObservations.MAGENTA: (255, 0, 255)
                         }
-    RANDOM_SEED_FIELD = "seed"
 
-    def __init__(self, params, sequences):
-        super(WaterWorldEnv, self).__init__()
+    # when a seed is fixed, a derived seed is used every time the environment is restarted,
+    # helps with reproducibility while generalizing to different starting positions
+    RANDOM_RESTART = "random_restart"
+
+    def __init__(self, params, sequences, obs_to_avoid=None):
+        super().__init__(params)
+
+        self.random_restart = utils.get_param(params, WaterWorldEnv.RANDOM_RESTART, True)
+        self.num_resets = 0
 
         # check input sequence
         self._check_sequences(sequences)
@@ -130,6 +136,10 @@ class WaterWorldEnv(gym.Env):
         # sequences of balls that have to be touched
         self.sequences = sequences
         self.state = None  # current index in each sequence
+        self.last_strict_obs = None  # last thing observed (used only for strict sequences)
+
+        # set of observables to avoid seeing at anytime (only when the sequence is not strict)
+        self.obs_to_avoid = obs_to_avoid
 
         # parameters
         self.max_x = utils.get_param(params, "max_x", 400)
@@ -139,7 +149,6 @@ class WaterWorldEnv(gym.Env):
         self.ball_velocity = utils.get_param(params, "ball_velocity", 30)
         self.ball_num_per_color = utils.get_param(params, "ball_num_per_color", 2)
         self.use_velocities = utils.get_param(params, "use_velocities", True)
-        self.ball_disappear = utils.get_param(params, "ball_disappear", False)
         self.agent_vel_delta = self.ball_velocity
         self.agent_vel_max = 3 * self.ball_velocity
 
@@ -150,16 +159,9 @@ class WaterWorldEnv(gym.Env):
         self.observation_space = spaces.Discrete(52)  # not exactly correct....
         self.action_space = spaces.Discrete(5)
 
-        # whether the game is over
-        self.is_game_over = False
-
-        self.seed = utils.get_param(params, WaterWorldEnv.RANDOM_SEED_FIELD)
-
         # rendering attributes
         self.is_rendering = False
         self.game_display = None
-
-        self.waiting_for_strict_observation = True
 
     def _check_sequences(self, sequences):
         for sequence in sequences:
@@ -212,13 +214,6 @@ class WaterWorldEnv(gym.Env):
 
         if self.is_game_over:
             return self._get_features(), 0.0, True, self.get_observations()
-
-        # if balls disappear, then relocate balls that the agent is colliding before the action
-        if self.ball_disappear:
-            for b in self.balls:
-                if self.agent.is_colliding(b):
-                    pos, vel = self._get_pos_vel_new_ball()
-                    b.update(pos, vel)
 
         # updating the agents velocity
         self.agent.step(action)
@@ -274,19 +269,36 @@ class WaterWorldEnv(gym.Env):
             sequence = self.sequences[i]
             if sequence.is_strict:
                 if len(observations) == 0:
-                    self.waiting_for_strict_observation = True
-                elif self.waiting_for_strict_observation and len(observations) > 0 and current_index < len(sequence.sequence):
-                    if len(observations) == 1 and sequence.sequence[current_index] in observations:
-                        self.state[i] = current_index + 1
-                        self.waiting_for_strict_observation = False
-                    else:
-                        return True
+                    self.last_strict_obs = None
+                elif len(observations) == 1:
+                    if not self._is_subgoal_in_observation(self.last_strict_obs, observations):
+                        if self._is_subgoal_in_observation(sequence.sequence[current_index], observations):
+                            self.last_strict_obs = sequence.sequence[current_index]
+                            self.state[i] = current_index + 1
+                        else:
+                            return True
+                else:
+                    return True
             else:
-                while current_index < len(sequence.sequence) and sequence.sequence[current_index] in observations:
+                if self.obs_to_avoid is not None and self._contains_observable_to_avoid(observations):
+                    return True
+                while current_index < len(sequence.sequence) and self._is_subgoal_in_observation(sequence.sequence[current_index], observations):
                     current_index += 1
                 self.state[i] = current_index
 
         return False
+
+    def _contains_observable_to_avoid(self, observation):
+        for o in observation:
+            if o in self.obs_to_avoid:
+                return True
+        return False
+
+    def _is_subgoal_in_observation(self, subgoal, observation):
+        for s in subgoal:
+            if s not in observation:
+                return False
+        return True
 
     def is_goal_achieved(self):
         # all sequences have been observed
@@ -314,10 +326,9 @@ class WaterWorldEnv(gym.Env):
             for i in range(len(balls)):
                 # if the balls are colliding, they are not included because there is nothing the agent can do about it
                 b = balls[i]
-                if not self.ball_disappear or not agent.is_colliding(b):
-                    init = 4 * (i + 1)
-                    features[init:init+2] = (b.pos - agent.pos) / pos_max
-                    features[init+2:init+4] = (b.vel - agent.vel) / vel_max
+                init = 4 * (i + 1)
+                features[init:init+2] = (b.pos - agent.pos) / pos_max
+                features[init+2:init+4] = (b.vel - agent.vel) / vel_max
         else:
             n_features = 4 + len(balls) * 2
             features = np.zeros(n_features, dtype=np.float)
@@ -329,17 +340,22 @@ class WaterWorldEnv(gym.Env):
 
             for i in range(len(balls)):
                 b = balls[i]
-                if not self.ball_disappear or not agent.is_colliding(b):
-                    init = 2 * i + 4
-                    features[init:init+2] = (b.pos - agent.pos) / pos_max
+                init = 2 * i + 4
+                features[init:init+2] = (b.pos - agent.pos) / pos_max
 
         return features
 
     def reset(self):
-        self.is_game_over = False
-        self.waiting_for_strict_observation = True
+        super().reset()
 
-        random_gen = random.Random(self.seed)
+        self.last_strict_obs = None
+
+        if self.random_restart and self.seed is not None:
+            seed = self.seed + self.num_resets
+            self.num_resets += 1
+        else:
+            seed = self.seed
+        random_gen = random.Random(seed)
 
         # adding the agent
         pos_a = [2 * self.ball_radius + random_gen.random() * (self.max_x - 2 * self.ball_radius),
@@ -390,14 +406,16 @@ class WaterWorldEnv(gym.Env):
     def get_automaton(self):
         automaton = SubgoalAutomaton()
 
+        automaton.set_initial_state("u0")
+        automaton.set_accept_state("u_acc")
+
         if self._is_strict_sequence():
             self._add_strict_transitions_to_automaton(automaton)
-            automaton.set_reject_state("s_rej")
+            automaton.set_reject_state("u_rej")
         else:
+            if self.obs_to_avoid is not None:
+                automaton.set_reject_state("u_rej")
             self._add_transitions_to_automaton(automaton)
-
-        automaton.set_initial_state("s0")
-        automaton.set_accept_state("s_acc")
 
         return automaton
 
@@ -413,15 +431,17 @@ class WaterWorldEnv(gym.Env):
 
         for i in range(len(sequence)):
             symbol = sequence[i]
-            current_state = "s%d" % state_counter
+            current_state = "u%d" % state_counter
             if i == len(sequence) - 1:
-                next_state = "s_acc"
+                next_state = "u_acc"
             else:
-                next_state = "s%d" % (state_counter + 1)
-            automaton.add_edge(current_state, next_state, [symbol])
-            for other_symbol in self.get_observables():
-                if symbol != other_symbol:
-                    automaton.add_edge(current_state, "s_rej", [other_symbol, "~" + symbol])
+                next_state = "u%d" % (state_counter + 1)
+
+            other_symbols = [x for x in self.get_observables() if x != symbol]
+
+            automaton.add_edge(current_state, next_state, [symbol] + ["~" + x for x in other_symbols])
+            for other_symbol in other_symbols:
+                automaton.add_edge(current_state, "u_rej", [other_symbol])
             state_counter += 1
 
     def _add_transitions_to_automaton(self, automaton):
@@ -453,9 +473,9 @@ class WaterWorldEnv(gym.Env):
                     # each tuple corresponds to a specific state
                     if derived_tuple not in seq_tuples_to_states:
                         if len(derived_tuple) == 0:
-                            seq_tuples_to_states[derived_tuple] = "s_acc"
+                            seq_tuples_to_states[derived_tuple] = "u_acc"
                         else:
-                            seq_tuples_to_states[derived_tuple] = "s%d" % current_state_id
+                            seq_tuples_to_states[derived_tuple] = "u%d" % current_state_id
                             current_state_id += 1
 
                     # append the derived sequence to the queue to be analysed
@@ -472,14 +492,26 @@ class WaterWorldEnv(gym.Env):
                             final_transition.append("~" + symbol)
                         elif self._is_symbol_true_in_all_arrays(symbol, derived_to_transitions[derived_seq]):
                             final_transition.append(symbol)
+                    if self.obs_to_avoid is not None:
+                        for o in self.obs_to_avoid:
+                            final_transition.append("~" + o)
                     to_state = seq_tuples_to_states[derived_seq]
                     automaton.add_edge(seq_tuples_to_states[seq_tuple], to_state, final_transition)
+
+        if self.obs_to_avoid is not None:
+            for automaton_state in [x for x in automaton.get_states() if not automaton.is_terminal_state(x)]:
+                for o in self.obs_to_avoid:
+                    automaton.add_edge(automaton_state, "u_rej", [o])
 
     def _get_symbols_from_sequence(self):
         symbols = set([])
         for sequence in self.sequences:
             for symbol in sequence.sequence:
-                symbols.add(symbol)
+                if type(symbol) is str:
+                    symbols.add(symbol)
+                elif type(symbol) is tuple:
+                    for s in symbol:
+                        symbols.add(s)
         return sorted(list(symbols))
 
     def _get_sequence_tuple_from_ball_sequence(self):
@@ -495,7 +527,7 @@ class WaterWorldEnv(gym.Env):
         for subsequence in seq_tuple:
             last_unsat = 0
             for i in range(len(subsequence)):
-                if subsequence[i] in assignment:
+                if self._is_subgoal_in_observation(subsequence[i], assignment):
                     last_unsat += 1
                 else:
                     break
@@ -576,40 +608,40 @@ class WaterWorldEnv(gym.Env):
 class WaterWorldRedGreenEnv(WaterWorldEnv):
     def __init__(self, params=None):
         sequences = [BallSequence([WaterWorldObservations.RED, WaterWorldObservations.GREEN], False)]
-        super(WaterWorldRedGreenEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldBlueCyanEnv(WaterWorldEnv):
     def __init__(self, params=None):
         sequences = [BallSequence([WaterWorldObservations.BLUE, WaterWorldObservations.CYAN], False)]
-        super(WaterWorldBlueCyanEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldMagentaYellowEnv(WaterWorldEnv):
     def __init__(self, params=None):
         sequences = [BallSequence([WaterWorldObservations.MAGENTA, WaterWorldObservations.YELLOW], False)]
-        super(WaterWorldMagentaYellowEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenAndBlueCyanEnv(WaterWorldEnv):
     def __init__(self, params=None):
         sequences = [BallSequence([WaterWorldObservations.RED, WaterWorldObservations.GREEN], False),
                      BallSequence([WaterWorldObservations.BLUE, WaterWorldObservations.CYAN], False)]
-        super(WaterWorldRedGreenAndBlueCyanEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldBlueCyanAndMagentaYellowEnv(WaterWorldEnv):
     def __init__(self, params=None):
         sequences = [BallSequence([WaterWorldObservations.BLUE, WaterWorldObservations.CYAN], False),
                      BallSequence([WaterWorldObservations.MAGENTA, WaterWorldObservations.YELLOW], False)]
-        super(WaterWorldBlueCyanAndMagentaYellowEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenAndMagentaYellowEnv(WaterWorldEnv):
     def __init__(self, params=None):
         sequences = [BallSequence([WaterWorldObservations.RED, WaterWorldObservations.GREEN], False),
                      BallSequence([WaterWorldObservations.MAGENTA, WaterWorldObservations.YELLOW], False)]
-        super(WaterWorldRedGreenAndMagentaYellowEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenAndBlueCyanAndMagentaYellowEnv(WaterWorldEnv):
@@ -617,7 +649,7 @@ class WaterWorldRedGreenAndBlueCyanAndMagentaYellowEnv(WaterWorldEnv):
         sequences = [BallSequence([WaterWorldObservations.RED, WaterWorldObservations.GREEN], False),
                      BallSequence([WaterWorldObservations.BLUE, WaterWorldObservations.CYAN], False),
                      BallSequence([WaterWorldObservations.MAGENTA, WaterWorldObservations.YELLOW], False)]
-        super(WaterWorldRedGreenAndBlueCyanAndMagentaYellowEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenBlueAndCyanMagentaYellowEnv(WaterWorldEnv):
@@ -628,7 +660,14 @@ class WaterWorldRedGreenBlueAndCyanMagentaYellowEnv(WaterWorldEnv):
                      BallSequence([WaterWorldObservations.CYAN,
                                    WaterWorldObservations.MAGENTA,
                                    WaterWorldObservations.YELLOW], False)]
-        super(WaterWorldRedGreenBlueAndCyanMagentaYellowEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
+
+
+class WaterWorldRedGreenStrictEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([WaterWorldObservations.RED,
+                                   WaterWorldObservations.GREEN], True)]
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenBlueStrictEnv(WaterWorldEnv):
@@ -636,7 +675,7 @@ class WaterWorldRedGreenBlueStrictEnv(WaterWorldEnv):
         sequences = [BallSequence([WaterWorldObservations.RED,
                                    WaterWorldObservations.GREEN,
                                    WaterWorldObservations.BLUE], True)]
-        super(WaterWorldRedGreenBlueStrictEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldCyanMagentaYellowStrictEnv(WaterWorldEnv):
@@ -644,7 +683,7 @@ class WaterWorldCyanMagentaYellowStrictEnv(WaterWorldEnv):
         sequences = [BallSequence([WaterWorldObservations.CYAN,
                                    WaterWorldObservations.MAGENTA,
                                    WaterWorldObservations.YELLOW], True)]
-        super(WaterWorldCyanMagentaYellowStrictEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedAndBlueCyanEnv(WaterWorldEnv):
@@ -652,7 +691,7 @@ class WaterWorldRedAndBlueCyanEnv(WaterWorldEnv):
         sequences = [BallSequence([WaterWorldObservations.RED], False),
                      BallSequence([WaterWorldObservations.BLUE,
                                    WaterWorldObservations.CYAN], False)]
-        super(WaterWorldRedAndBlueCyanEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenAndBlueEnv(WaterWorldEnv):
@@ -660,7 +699,7 @@ class WaterWorldRedGreenAndBlueEnv(WaterWorldEnv):
         sequences = [BallSequence([WaterWorldObservations.RED,
                                    WaterWorldObservations.GREEN], False),
                      BallSequence([WaterWorldObservations.BLUE], False)]
-        super(WaterWorldRedGreenAndBlueEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenBlueEnv(WaterWorldEnv):
@@ -668,7 +707,7 @@ class WaterWorldRedGreenBlueEnv(WaterWorldEnv):
         sequences = [BallSequence([WaterWorldObservations.RED,
                                    WaterWorldObservations.GREEN,
                                    WaterWorldObservations.BLUE], False)]
-        super(WaterWorldRedGreenBlueEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
 
 class WaterWorldRedGreenBlueCyanEnv(WaterWorldEnv):
@@ -677,5 +716,48 @@ class WaterWorldRedGreenBlueCyanEnv(WaterWorldEnv):
                                    WaterWorldObservations.GREEN,
                                    WaterWorldObservations.BLUE,
                                    WaterWorldObservations.CYAN], False)]
-        super(WaterWorldRedGreenBlueCyanEnv, self).__init__(params, sequences)
+        super().__init__(params, sequences)
 
+
+class WaterWorldRedGreenJointEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([(WaterWorldObservations.RED, WaterWorldObservations.GREEN)], False)]
+        super().__init__(params, sequences)
+
+
+class WaterWorldRedAndGreenAndBlueEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([WaterWorldObservations.RED], False),
+                     BallSequence([WaterWorldObservations.GREEN], False),
+                     BallSequence([WaterWorldObservations.BLUE], False)]
+        super().__init__(params, sequences)
+
+
+class WaterWorldRedGreenBlueCyanYellowEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([WaterWorldObservations.RED,
+                                   WaterWorldObservations.GREEN,
+                                   WaterWorldObservations.BLUE,
+                                   WaterWorldObservations.CYAN,
+                                   WaterWorldObservations.YELLOW], False)]
+        super().__init__(params, sequences)
+
+
+class WaterWorldRedGreenAvoidMagentaEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([WaterWorldObservations.RED,
+                                   WaterWorldObservations.GREEN], False)]
+        super().__init__(params, sequences, [WaterWorldObservations.MAGENTA])
+
+
+class WaterWorldRedGreenAvoidMagentaYellowEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([WaterWorldObservations.RED,
+                                   WaterWorldObservations.GREEN], False)]
+        super().__init__(params, sequences, [WaterWorldObservations.MAGENTA, WaterWorldObservations.YELLOW])
+
+
+class WaterWorldRedAvoidMagentaEnv(WaterWorldEnv):
+    def __init__(self, params=None):
+        sequences = [BallSequence([WaterWorldObservations.RED], False)]
+        super().__init__(params, sequences, [WaterWorldObservations.MAGENTA])
