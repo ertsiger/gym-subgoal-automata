@@ -1,6 +1,6 @@
 # Gym Subgoal Automata
-Environments from the paper ["Using Reward Machines for High-Level Task Specification and Decomposition in Reinforcement Learning"](#references) 
-using OpenAI Gym API. This repository currently complements the code for the paper ["Induction of Subgoal Automata for Reinforcement Learning"](#references), 
+Environments from [[Toro Icarte et al., 2018]](#references) using OpenAI Gym API. This repository currently complements
+the code for [[Furelos-Blanco et al., 2020]](#references) and [[Furelos-Blanco et al., 2021]](#references), 
 whose code is [here](https://github.com/ertsiger/induction-subgoal-automata-rl).
 
 1. [Installation](#installation)
@@ -36,4 +36,6 @@ in this repository is heavily based on theirs.
 
 ## <a name="references"></a>References
 * Toro Icarte, R.; Klassen, T. Q.; Valenzano, R. A.; and McIlraith, S. A. 2018. [_Using Reward Machines for High-Level Task Specification and Decomposition in Reinforcement Learning_](http://proceedings.mlr.press/v80/icarte18a.html). Proceedings of the 35th International Conference on Machine Learning.
-* Furelos-Blanco, D.; Law, M.; Russo, A.; Broda, K.; and Jonsson, A. 2020. [_Induction of Subgoal Automata for Reinforcement Learning_](https://aaai.org/ojs/index.php/AAAI/article/view/5802). Proceedings of the 34th AAAI Conference on Artificial Intelligence.
+* Furelos-Blanco, D.; Law, M.; Russo, A.; Broda, K.; and Jonsson, A. 2020. [_Induction of Subgoal Automata for Reinforcement Learning_](https://doi.org/10.1609/aaai.v34i04.5802). Proceedings of the 34th AAAI Conference on Artificial Intelligence.
+* Furelos-Blanco, D.; Law, M.; Jonsson, A.; Broda, K.; and Russo, A. 2021. [_Induction and Exploitation of Subgoal Automata for Reinforcement Learning_](https://jair.org/index.php/jair/article/view/12372). J. Artif. Intell. Res., 70, 1031-1116.
+
