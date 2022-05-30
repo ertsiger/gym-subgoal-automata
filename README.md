@@ -12,7 +12,7 @@ whose code is [here](https://github.com/ertsiger/induction-subgoal-automata-rl).
 To install the package, you just have to clone the repository and run the following commands:
 ```
 cd gym-subgoal-automata
-python setup.py install
+pip install -e .
 ```
 
 We recommend you to use a [virtual environment](https://docs.python.org/3/tutorial/venv.html) since the requirements of 
@@ -25,10 +25,10 @@ instantiate the OfficeWorld environment where the task is "deliver coffee to the
 
 ```
 import gym
-env = gym.make("gym_subgoal_automata:OfficeWorldDeliverCoffee-v0")
+env = gym.make("gym_subgoal_automata:OfficeWorldDeliverCoffee-v0", params={"generation": "random", "environment_seed": 0})
 ```
 
-You can use the method `env.play()` to use the environment with your keyboard.
+You can use the method `env.play()` to use the environment with your keyboard using the `w`, `a`, `s` and `d` keys. In this task you have to observe `f` (coffee) and then `g` (office) while avoiding the `n` (plants/decorations).
 
 ## <a name="acks"></a>Acknowledgments
 We thank the authors of reward machines for open sourcing their [code](https://bitbucket.org/RToroIcarte/qrm). The code 
