@@ -18,6 +18,8 @@ pip install -e .
 We recommend you to use a [virtual environment](https://docs.python.org/3/tutorial/venv.html) since the requirements of 
 this package may affect your current installation. The `setup.py` file contains the current requirements for the code to run safely.
 
+The learned subgoal automata are exported to `.png` using Graphviz. You can follow the instructions in the [official webpage](https://graphviz.org/download/) to install it.
+
 ## <a name="usage"></a>Usage
 The repository has implementations for the OfficeWorld and WaterWorld environments and different associated success/fail tasks. 
 You can find the list of all tasks in the file `gym_subgoal_automata/__init__.py`. The following is an example of how to
